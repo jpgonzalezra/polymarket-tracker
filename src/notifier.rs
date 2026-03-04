@@ -1,19 +1,25 @@
 use crate::polymarket::Trade;
+use std::collections::HashSet;
+use std::sync::Arc;
 use teloxide::prelude::*;
 use teloxide::types::ParseMode;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, RwLock};
 
 pub struct Notifier {
     bot: Bot,
-    chat_id: ChatId,
+    registered_chats: Arc<RwLock<HashSet<i64>>>,
     rx: mpsc::Receiver<Trade>,
 }
 
 impl Notifier {
-    pub fn new(bot: Bot, chat_id: i64, rx: mpsc::Receiver<Trade>) -> Self {
+    pub fn new(
+        bot: Bot,
+        registered_chats: Arc<RwLock<HashSet<i64>>>,
+        rx: mpsc::Receiver<Trade>,
+    ) -> Self {
         Self {
             bot,
-            chat_id: ChatId(chat_id),
+            registered_chats,
             rx,
         }
     }
@@ -23,7 +29,6 @@ impl Notifier {
         loop {
             tokio::select! {
                 _ = shutdown.cancelled() => {
-                    // Drain remaining messages before shutting down
                     while let Ok(trade) = self.rx.try_recv() {
                         if let Err(e) = self.send_trade_alert(&trade).await {
                             tracing::error!(error = %e, "failed to send trade alert during shutdown");
@@ -57,11 +62,28 @@ impl Notifier {
 
     async fn send_trade_alert(&self, trade: &Trade) -> Result<(), teloxide::RequestError> {
         let message = format_trade_message(trade);
-        self.bot
-            .send_message(self.chat_id, &message)
-            .parse_mode(ParseMode::Html)
-            .send()
-            .await?;
+        let chats: Vec<i64> = self.registered_chats.read().await.iter().copied().collect();
+
+        if chats.is_empty() {
+            tracing::warn!(
+                tx_hash = %trade.transaction_hash,
+                "no registered chats — dropping alert (send any command to the bot first)"
+            );
+            return Ok(());
+        }
+
+        for chat_id in chats {
+            if let Err(e) = self
+                .bot
+                .send_message(ChatId(chat_id), &message)
+                .parse_mode(ParseMode::Html)
+                .send()
+                .await
+            {
+                tracing::error!(chat_id, error = %e, "failed to send to chat");
+            }
+        }
+
         tracing::info!(
             tx_hash = %trade.transaction_hash,
             proxy_wallet = %trade.proxy_wallet,

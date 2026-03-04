@@ -19,6 +19,8 @@ pub enum Command {
     List,
     #[command(description = "Show bot status")]
     Status,
+    #[command(description = "Subscribe this chat to trade alerts (admin only)")]
+    Subscribe,
 }
 
 #[derive(Clone)]
@@ -27,6 +29,7 @@ pub struct BotState {
     pub admin_user_ids: Vec<u64>,
     pub start_time: std::time::Instant,
     pub last_poll: Arc<RwLock<Option<std::time::Instant>>>,
+    pub registered_chats: Arc<RwLock<std::collections::HashSet<i64>>>,
 }
 
 fn is_admin(user_id: UserId, admin_ids: &[u64]) -> bool {
@@ -155,6 +158,17 @@ pub async fn handle_command(
                  🔄 Last poll: {}",
                 hours, mins, wallet_count, last_poll_str
             )
+        }
+
+        Command::Subscribe => {
+            let user_id = msg.from.as_ref().map(|u| u.id).unwrap_or(UserId(0));
+            if !is_admin(user_id, &state.admin_user_ids) {
+                "⛔ You are not authorized to subscribe. Only admins can receive trade alerts."
+                    .to_string()
+            } else {
+                state.registered_chats.write().await.insert(msg.chat.id.0);
+                "✅ This chat is now subscribed to trade alerts.".to_string()
+            }
         }
     };
 

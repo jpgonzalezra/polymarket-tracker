@@ -3,7 +3,6 @@ use std::env;
 #[derive(Debug, Clone)]
 pub struct Config {
     pub telegram_bot_token: String,
-    pub telegram_chat_id: i64,
     pub admin_user_ids: Vec<u64>,
     pub database_url: String,
     pub polymarket_api_base_url: String,
@@ -16,11 +15,6 @@ impl Config {
     pub fn from_env() -> Result<Self, ConfigError> {
         let telegram_bot_token =
             env::var("TELEGRAM_BOT_TOKEN").map_err(|_| ConfigError::Missing("TELEGRAM_BOT_TOKEN"))?;
-
-        let telegram_chat_id: i64 = env::var("TELEGRAM_CHAT_ID")
-            .map_err(|_| ConfigError::Missing("TELEGRAM_CHAT_ID"))?
-            .parse()
-            .map_err(|_| ConfigError::Invalid("TELEGRAM_CHAT_ID", "must be an i64"))?;
 
         let admin_user_ids: Vec<u64> = env::var("ADMIN_USER_IDS")
             .map_err(|_| ConfigError::Missing("ADMIN_USER_IDS"))?
@@ -55,7 +49,6 @@ impl Config {
 
         Ok(Config {
             telegram_bot_token,
-            telegram_chat_id,
             admin_user_ids,
             database_url,
             polymarket_api_base_url,
@@ -82,7 +75,6 @@ mod tests {
     fn test_defaults_applied() {
         // Set required vars
         env::set_var("TELEGRAM_BOT_TOKEN", "test_token");
-        env::set_var("TELEGRAM_CHAT_ID", "-100123");
         env::set_var("ADMIN_USER_IDS", "111,222");
         env::set_var("DATABASE_URL", "postgresql://localhost/test");
 

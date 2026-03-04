@@ -62,6 +62,7 @@ Real-time Telegram alerts for Polymarket wallet activity. Monitors proxy wallets
 | `/remove <0xAddress>` | Yes | Remove a wallet from watchlist |
 | `/list` | No | List all watched wallets |
 | `/status` | No | Show uptime, wallet count, last poll time |
+| `/subscribe` | Yes | Subscribe this chat to receive trade alerts |
 
 ## Running Tests
 
@@ -71,9 +72,14 @@ cargo test
 
 ## How It Works
 
-1. On startup, records the current timestamp as `startup_timestamp`.
-2. Loads watched wallets from the database.
-3. Every `POLL_INTERVAL_SECS`, polls the Polymarket Data API for trades for each watched wallet.
-4. Filters to only trades with `timestamp > startup_timestamp` and not yet seen (in-memory `HashSet`).
-5. Sends Telegram alerts for new trades.
-6. On restart, starts fresh — no duplicate alerts, no recovery of missed trades.
+### Setup
+1. Admin sends `/subscribe` to the bot to register their chat for trade alerts
+2. Admin sends `/add 0x<proxyWallet> [alias]` to add wallets to watch
+
+### Runtime
+1. On startup, records the current timestamp as `startup_timestamp`
+2. Loads watched wallets from the database
+3. Every `POLL_INTERVAL_SECS`, polls the Polymarket Data API for trades for each watched wallet
+4. Filters to only trades with `timestamp > startup_timestamp` and not yet seen (in-memory `HashSet`)
+5. Sends Telegram alerts to all subscribed chats
+6. On restart, starts fresh — no duplicate alerts, no recovery of missed trades

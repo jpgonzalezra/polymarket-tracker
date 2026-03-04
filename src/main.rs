@@ -47,6 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 6. Shared state
     let seen_tx_hashes: Arc<RwLock<HashSet<String>>> = Arc::new(RwLock::new(HashSet::new()));
     let last_poll: Arc<RwLock<Option<std::time::Instant>>> = Arc::new(RwLock::new(None));
+    let registered_chats: Arc<RwLock<HashSet<i64>>> = Arc::new(RwLock::new(HashSet::new()));
 
     // 7. Notifier channel
     let (notifier_tx, notifier_rx) = tokio::sync::mpsc::channel(256);
@@ -69,7 +70,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         last_poll.clone(),
     );
 
-    let notifier = Notifier::new(bot.clone(), config.telegram_chat_id, notifier_rx);
+    let notifier = Notifier::new(bot.clone(), registered_chats.clone(), notifier_rx);
 
     let health_state = health::HealthState {
         pool: pool.clone(),
@@ -82,6 +83,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         admin_user_ids: config.admin_user_ids.clone(),
         start_time,
         last_poll: last_poll.clone(),
+        registered_chats: registered_chats.clone(),
     };
 
     // 10. Spawn tasks
