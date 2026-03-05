@@ -162,12 +162,23 @@ pub async fn handle_command(
 
         Command::Subscribe => {
             let user_id = msg.from.as_ref().map(|u| u.id).unwrap_or(UserId(0));
+            tracing::info!(user_id = user_id.0, "user attempting to subscribe");
             if !is_admin(user_id, &state.admin_user_ids) {
                 "⛔ You are not authorized to subscribe. Only admins can receive trade alerts."
                     .to_string()
             } else {
-                state.registered_chats.write().await.insert(msg.chat.id.0);
-                "✅ This chat is now subscribed to trade alerts.".to_string()
+                let chat_id = msg.chat.id.0;
+                match db::insert_registered_chat(&state.pool, chat_id).await {
+                    Ok(()) => {
+                        tracing::info!(user_id = user_id.0, chat_id, "chat subscribed successfully");
+                        state.registered_chats.write().await.insert(chat_id);
+                        "✅ This chat is now subscribed to trade alerts.".to_string()
+                    }
+                    Err(e) => {
+                        tracing::error!(chat_id, error = %e, "failed to persist chat subscription");
+                        format!("❌ Database error: {}", e)
+                    }
+                }
             }
         }
     };

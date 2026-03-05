@@ -47,7 +47,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 6. Shared state
     let seen_tx_hashes: Arc<RwLock<HashSet<String>>> = Arc::new(RwLock::new(HashSet::new()));
     let last_poll: Arc<RwLock<Option<std::time::Instant>>> = Arc::new(RwLock::new(None));
-    let registered_chats: Arc<RwLock<HashSet<i64>>> = Arc::new(RwLock::new(HashSet::new()));
+    let initial_chats: HashSet<i64> = db::load_registered_chats(&pool)
+        .await?
+        .into_iter()
+        .collect();
+    tracing::info!(count = initial_chats.len(), "loaded registered chats from db");
+    let registered_chats: Arc<RwLock<HashSet<i64>>> = Arc::new(RwLock::new(initial_chats));
 
     // 7. Notifier channel
     let (notifier_tx, notifier_rx) = tokio::sync::mpsc::channel(256);

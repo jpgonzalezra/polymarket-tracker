@@ -75,3 +75,20 @@ pub async fn remove_wallet(pool: &PgPool, proxy_wallet: &str) -> Result<bool, sq
         .await?;
     Ok(result.rows_affected() > 0)
 }
+
+pub async fn load_registered_chats(pool: &PgPool) -> Result<Vec<i64>, sqlx::Error> {
+    let rows = sqlx::query("SELECT chat_id FROM registered_chats")
+        .fetch_all(pool)
+        .await?;
+    Ok(rows.into_iter().map(|r| r.get("chat_id")).collect())
+}
+
+pub async fn insert_registered_chat(pool: &PgPool, chat_id: i64) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO registered_chats (chat_id) VALUES ($1) ON CONFLICT (chat_id) DO NOTHING",
+    )
+    .bind(chat_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
