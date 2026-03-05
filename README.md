@@ -23,7 +23,6 @@ Real-time Telegram alerts for Polymarket wallet activity. Monitors proxy wallets
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `TELEGRAM_BOT_TOKEN` | Yes | - | Telegram bot API token |
-| `TELEGRAM_CHAT_ID` | Yes | - | Telegram chat ID for alerts |
 | `ADMIN_USER_IDS` | Yes | - | Comma-separated Telegram user IDs for admin access |
 | `DATABASE_URL` | Yes | - | PostgreSQL connection string |
 | `POLYMARKET_API_BASE_URL` | No | `https://data-api.polymarket.com` | Polymarket Data API base URL |
