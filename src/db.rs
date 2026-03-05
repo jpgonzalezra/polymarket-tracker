@@ -1,5 +1,5 @@
-use sqlx::postgres::PgPool;
-use sqlx::Row;
+use sqlx::postgres::{PgConnectOptions, PgPool};
+use sqlx::{Connection, Row};
 
 #[derive(Debug, Clone)]
 pub struct WatchedWallet {
@@ -8,8 +8,16 @@ pub struct WatchedWallet {
 }
 
 pub async fn connect(database_url: &str) -> Result<PgPool, sqlx::Error> {
+    // Single direct connection for migrations (no prepared statement cache for PgBouncer compatibility)
+    let migrate_opts = database_url
+        .parse::<PgConnectOptions>()?
+        .statement_cache_capacity(0);
+    let mut conn = sqlx::postgres::PgConnection::connect_with(&migrate_opts).await?;
+    sqlx::migrate!("./migrations").run(&mut conn).await?;
+    conn.close().await?;
+
+    // Main pool for the app
     let pool = PgPool::connect(database_url).await?;
-    sqlx::migrate!("./migrations").run(&pool).await?;
     tracing::info!("database connected and migrations applied");
     Ok(pool)
 }
