@@ -10,7 +10,9 @@ pub fn filter_new_trades(
 ) -> Vec<Trade> {
     let mut new_trades: Vec<Trade> = trades
         .iter()
-        .filter(|t| t.timestamp > startup_timestamp && !seen_tx_hashes.contains(&t.transaction_hash))
+        .filter(|t| {
+            t.timestamp > startup_timestamp && !seen_tx_hashes.contains(&t.transaction_hash)
+        })
         .cloned()
         .collect();
 
@@ -38,6 +40,7 @@ mod tests {
             slug: "test".to_string(),
             event_slug: None,
             asset: None,
+            alias: Some("alias1".to_string()),
         }
     }
 
