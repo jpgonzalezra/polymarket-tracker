@@ -1,7 +1,7 @@
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
-use tracing::info;
+use tracing::debug;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -106,7 +106,7 @@ impl PolymarketClient {
             "{}?user={}&limit={}&offset={}&takerOnly=false",
             url, proxy_wallet, limit, offset
         );
-        info!(url = %full_url, "consuming polymarket API");
+        debug!(url = %full_url, "consuming polymarket API");
 
         for attempt in 0..4u32 {
             let result = self
