@@ -95,15 +95,36 @@ impl Notifier {
 }
 
 fn format_trade_message(trade: &Trade) -> String {
-    let addr_short = if trade.proxy_wallet.len() > 10 {
-        format!(
-            "{}...{}",
-            &trade.proxy_wallet[..6],
-            &trade.proxy_wallet[trade.proxy_wallet.len() - 4..]
-        )
+    let addr = &trade.proxy_wallet;
+    let addr_short = if addr.len() > 10 {
+        format!("{}...{}", &addr[..6], &addr[addr.len() - 4..])
     } else {
-        trade.proxy_wallet.clone()
+        addr.clone()
     };
+
+    let alias_str = trade
+        .alias
+        .as_ref()
+        .map(|a| format!(" ({})", a))
+        .unwrap_or_default();
+
+    let wallet_line = format!(
+        "👛 <a href=\"https://polymarketanalytics.com/traders/{addr}\">{addr_short}</a>{alias_str}",
+        addr = addr,
+        addr_short = addr_short,
+        alias_str = alias_str,
+    );
+
+    let market_slug = trade
+        .event_slug
+        .as_deref()
+        .unwrap_or(trade.slug.as_str());
+
+    let market_line = format!(
+        "📈 <a href=\"https://polymarket.com/event/{slug}\">{title}</a>",
+        slug = market_slug,
+        title = trade.title,
+    );
 
     let usdc_value = trade.usdc_value();
     let ts = chrono::DateTime::from_timestamp(trade.timestamp, 0)
@@ -112,16 +133,16 @@ fn format_trade_message(trade: &Trade) -> String {
 
     format!(
         "🔔 <b>Trade Alert</b>\n\
-         👛 Wallet: <code>{addr_short}</code>\n\
+         {wallet_line}\n\
          📊 {side} {outcome}\n\
-         📈 Market: {title}\n\
+         {market_line}\n\
          💰 Price: ${price:.4} | Size: {size:.2} tokens (~${usdc:.2})\n\
          🕐 {ts}\n\
          🔗 <a href=\"https://polygonscan.com/tx/{tx_hash}\">View Tx</a>",
-        addr_short = addr_short,
+        wallet_line = wallet_line,
         side = trade.side,
         outcome = trade.outcome,
-        title = trade.title,
+        market_line = market_line,
         price = trade.price,
         size = trade.size,
         usdc = usdc_value,

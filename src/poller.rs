@@ -108,7 +108,7 @@ impl Poller {
     async fn poll_wallet(
         &self,
         proxy_wallet: String,
-        _alias: Option<String>,
+        alias: Option<String>,
         last_synced_timestamp: Option<i64>,
     ) -> Result<usize, Box<dyn std::error::Error + Send + Sync>> {
         let since_ts = last_synced_timestamp.unwrap_or(self.startup_timestamp);
@@ -144,7 +144,8 @@ impl Poller {
 
         // Mark as seen and enqueue notifications
         let mut seen = self.seen_tx_hashes.write().await;
-        for trade in new_trades {
+        for mut trade in new_trades {
+            trade.alias = alias.clone();
             seen.insert(trade.transaction_hash.clone());
             if let Err(e) = self.notifier_tx.send(trade).await {
                 tracing::error!(error = %e, "failed to enqueue trade notification");

@@ -21,6 +21,8 @@ pub struct Trade {
     pub event_slug: Option<String>,
     #[serde(default)]
     pub asset: Option<String>,
+    #[serde(skip)]
+    pub alias: Option<String>,
 }
 
 impl Trade {
