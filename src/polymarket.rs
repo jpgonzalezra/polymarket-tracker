@@ -1,6 +1,7 @@
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
+use tracing::info;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -55,19 +56,35 @@ impl PolymarketClient {
         }
     }
 
-    pub async fn fetch_trades(&self, proxy_wallet: &str) -> Result<Vec<Trade>, ApiError> {
-        let mut all_trades = Vec::new();
+    /// Fetches only trades newer than `since_timestamp`.
+    /// The API returns trades ordered by timestamp DESC (newest first),
+    /// so we stop paginating as soon as we see a trade that is old enough.
+    pub async fn fetch_trades_since(
+        &self,
+        proxy_wallet: &str,
+        since_timestamp: i64,
+    ) -> Result<Vec<Trade>, ApiError> {
+        let mut new_trades = Vec::new();
         let mut offset = 0u32;
         let limit = 100u32;
 
         loop {
-            let trades = self.fetch_trades_page(proxy_wallet, limit, offset).await?;
-            let count = trades.len();
-            all_trades.extend(trades);
+            let page = self.fetch_trades_page(proxy_wallet, limit, offset).await?;
+            let page_len = page.len();
 
-            if (count as u32) < limit {
+            let mut done = page_len < limit as usize;
+            for trade in page {
+                if trade.timestamp <= since_timestamp {
+                    done = true;
+                } else {
+                    new_trades.push(trade);
+                }
+            }
+
+            if done {
                 break;
             }
+
             offset += limit;
             // Safety: don't paginate beyond 10000 (API limit)
             if offset >= 10_000 {
@@ -75,7 +92,7 @@ impl PolymarketClient {
             }
         }
 
-        Ok(all_trades)
+        Ok(new_trades)
     }
 
     async fn fetch_trades_page(
@@ -85,6 +102,11 @@ impl PolymarketClient {
         offset: u32,
     ) -> Result<Vec<Trade>, ApiError> {
         let url = format!("{}/trades", self.base_url);
+        let full_url = format!(
+            "{}?user={}&limit={}&offset={}&takerOnly=false",
+            url, proxy_wallet, limit, offset
+        );
+        info!(url = %full_url, "consuming polymarket API");
 
         for attempt in 0..4u32 {
             let result = self

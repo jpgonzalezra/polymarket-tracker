@@ -88,7 +88,7 @@ impl Poller {
         tracing::debug!(wallet_count = wallets.len(), "polling wallets");
 
         let results: Vec<_> = stream::iter(wallets)
-            .map(|wallet| self.poll_wallet(wallet.proxy_wallet, wallet.alias))
+            .map(|wallet| self.poll_wallet(wallet.proxy_wallet, wallet.alias, wallet.last_synced_timestamp))
             .buffer_unordered(self.max_concurrency)
             .collect()
             .await;
@@ -109,8 +109,11 @@ impl Poller {
         &self,
         proxy_wallet: String,
         _alias: Option<String>,
+        last_synced_timestamp: Option<i64>,
     ) -> Result<usize, Box<dyn std::error::Error + Send + Sync>> {
-        let trades = match self.client.fetch_trades(&proxy_wallet).await {
+        let since_ts = last_synced_timestamp.unwrap_or(self.startup_timestamp);
+
+        let trades = match self.client.fetch_trades_since(&proxy_wallet, since_ts).await {
             Ok(t) => t,
             Err(e) => {
                 tracing::warn!(proxy_wallet = %proxy_wallet, error = %e, "failed to fetch trades, skipping");
@@ -119,7 +122,7 @@ impl Poller {
         };
 
         let seen = self.seen_tx_hashes.read().await;
-        let new_trades = filter_new_trades(&trades, self.startup_timestamp, &seen);
+        let new_trades = filter_new_trades(&trades, since_ts, &seen);
         drop(seen);
 
         let count = new_trades.len();
@@ -132,6 +135,12 @@ impl Poller {
             new_trades = count,
             "found new trades"
         );
+
+        // Update last_synced_timestamp to the newest trade we found
+        let max_ts = new_trades.iter().map(|t| t.timestamp).max().unwrap_or(since_ts);
+        if let Err(e) = db::update_last_synced_timestamp(&self.pool, &proxy_wallet, max_ts).await {
+            tracing::warn!(error = %e, "failed to update last_synced_timestamp");
+        }
 
         // Mark as seen and enqueue notifications
         let mut seen = self.seen_tx_hashes.write().await;

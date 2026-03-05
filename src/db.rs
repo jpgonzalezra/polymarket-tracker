@@ -5,6 +5,7 @@ use sqlx::{Connection, Row};
 pub struct WatchedWallet {
     pub proxy_wallet: String,
     pub alias: Option<String>,
+    pub last_synced_timestamp: Option<i64>,
 }
 
 pub async fn connect(database_url: &str) -> Result<PgPool, sqlx::Error> {
@@ -23,7 +24,7 @@ pub async fn connect(database_url: &str) -> Result<PgPool, sqlx::Error> {
 }
 
 pub async fn list_wallets(pool: &PgPool) -> Result<Vec<WatchedWallet>, sqlx::Error> {
-    let rows = sqlx::query("SELECT proxy_wallet, alias FROM watched_wallets ORDER BY added_at")
+    let rows = sqlx::query("SELECT proxy_wallet, alias, last_synced_timestamp FROM watched_wallets ORDER BY added_at")
         .fetch_all(pool)
         .await?;
 
@@ -32,6 +33,7 @@ pub async fn list_wallets(pool: &PgPool) -> Result<Vec<WatchedWallet>, sqlx::Err
         .map(|row| WatchedWallet {
             proxy_wallet: row.get("proxy_wallet"),
             alias: row.get("alias"),
+            last_synced_timestamp: row.get("last_synced_timestamp"),
         })
         .collect())
 }
@@ -46,6 +48,21 @@ pub async fn add_wallet(
     )
     .bind(proxy_wallet.to_lowercase())
     .bind(alias)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn update_last_synced_timestamp(
+    pool: &PgPool,
+    proxy_wallet: &str,
+    timestamp: i64,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "UPDATE watched_wallets SET last_synced_timestamp = $1 WHERE proxy_wallet = $2",
+    )
+    .bind(timestamp)
+    .bind(proxy_wallet)
     .execute(pool)
     .await?;
     Ok(())
