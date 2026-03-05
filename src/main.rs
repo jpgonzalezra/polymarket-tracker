@@ -1,3 +1,4 @@
+mod bot_score;
 mod config;
 mod db;
 mod filter;
@@ -62,11 +63,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 9. Create components
     let bot = Bot::new(&config.telegram_bot_token);
-    let api_client = PolymarketClient::new(&config.polymarket_api_base_url);
+    let api_client = Arc::new(PolymarketClient::new(&config.polymarket_api_base_url));
 
     let poller = Poller::new(
         pool.clone(),
-        api_client,
+        Arc::clone(&api_client),
         notifier_tx,
         config.max_concurrency,
         Duration::from_secs(config.poll_interval_secs),
@@ -89,6 +90,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         start_time,
         last_poll: last_poll.clone(),
         registered_chats: registered_chats.clone(),
+        api_client: Arc::clone(&api_client),
     };
 
     // 10. Spawn tasks

@@ -11,7 +11,7 @@ use tokio_util::sync::CancellationToken;
 
 pub struct Poller {
     pool: PgPool,
-    client: PolymarketClient,
+    client: Arc<PolymarketClient>,
     notifier_tx: mpsc::Sender<Trade>,
     max_concurrency: usize,
     poll_interval: Duration,
@@ -24,7 +24,7 @@ impl Poller {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         pool: PgPool,
-        client: PolymarketClient,
+        client: Arc<PolymarketClient>,
         notifier_tx: mpsc::Sender<Trade>,
         max_concurrency: usize,
         poll_interval: Duration,

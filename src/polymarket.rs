@@ -58,20 +58,40 @@ impl PolymarketClient {
         }
     }
 
-    /// Fetches only trades newer than `since_timestamp`.
-    /// The API returns trades ordered by timestamp DESC (newest first),
-    /// so we stop paginating as soon as we see a trade that is old enough.
+    /// Fetches only trades newer than `since_timestamp` (all fills).
     pub async fn fetch_trades_since(
         &self,
         proxy_wallet: &str,
         since_timestamp: i64,
+    ) -> Result<Vec<Trade>, ApiError> {
+        self.fetch_trades_since_impl(proxy_wallet, since_timestamp, false)
+            .await
+    }
+
+    /// Fetches only taker trades newer than `since_timestamp`.
+    pub async fn fetch_taker_trades_since(
+        &self,
+        proxy_wallet: &str,
+        since_timestamp: i64,
+    ) -> Result<Vec<Trade>, ApiError> {
+        self.fetch_trades_since_impl(proxy_wallet, since_timestamp, true)
+            .await
+    }
+
+    async fn fetch_trades_since_impl(
+        &self,
+        proxy_wallet: &str,
+        since_timestamp: i64,
+        taker_only: bool,
     ) -> Result<Vec<Trade>, ApiError> {
         let mut new_trades = Vec::new();
         let mut offset = 0u32;
         let limit = 100u32;
 
         loop {
-            let page = self.fetch_trades_page(proxy_wallet, limit, offset).await?;
+            let page = self
+                .fetch_trades_page(proxy_wallet, limit, offset, taker_only)
+                .await?;
             let page_len = page.len();
 
             let mut done = page_len < limit as usize;
@@ -88,7 +108,6 @@ impl PolymarketClient {
             }
 
             offset += limit;
-            // Safety: don't paginate beyond 10000 (API limit)
             if offset >= 10_000 {
                 break;
             }
@@ -102,11 +121,13 @@ impl PolymarketClient {
         proxy_wallet: &str,
         limit: u32,
         offset: u32,
+        taker_only: bool,
     ) -> Result<Vec<Trade>, ApiError> {
         let url = format!("{}/trades", self.base_url);
+        let taker_only_str = if taker_only { "true" } else { "false" };
         let full_url = format!(
-            "{}?user={}&limit={}&offset={}&takerOnly=false",
-            url, proxy_wallet, limit, offset
+            "{}?user={}&limit={}&offset={}&takerOnly={}",
+            url, proxy_wallet, limit, offset, taker_only_str
         );
         debug!(url = %full_url, "consuming polymarket API");
 
@@ -118,7 +139,7 @@ impl PolymarketClient {
                     ("user", proxy_wallet),
                     ("limit", &limit.to_string()),
                     ("offset", &offset.to_string()),
-                    ("takerOnly", "false"),
+                    ("takerOnly", taker_only_str),
                 ])
                 .send()
                 .await;

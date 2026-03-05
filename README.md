@@ -9,6 +9,7 @@ Real-time Telegram alerts for Polymarket wallet activity. Monitors proxy wallets
 - Admin access control for wallet management
 - In-memory dedup — only alerts trades that occur while the app is running
 - Health/readiness HTTP endpoints (`/healthz`, `/readyz`)
+- Bot score analysis (`/botscore`) — heuristic scoring pipeline to detect automated wallets
 - Structured JSON logging via `tracing`
 - Graceful shutdown (SIGINT/SIGTERM)
 
@@ -62,6 +63,7 @@ Real-time Telegram alerts for Polymarket wallet activity. Monitors proxy wallets
 | `/list` | No | List all watched wallets |
 | `/status` | No | Show uptime, wallet count, last poll time |
 | `/subscribe` | Yes | Subscribe this chat to receive trade alerts |
+| `/botscore <0xAddress>` | Yes | Analyze if a wallet is likely a bot (score 0–100) |
 
 ## Running Tests
 
@@ -82,3 +84,22 @@ cargo test
 4. Filters to only trades with `timestamp > startup_timestamp` and not yet seen (in-memory `HashSet`)
 5. Sends Telegram alerts to all subscribed chats
 6. On restart, starts fresh — no duplicate alerts, no recovery of missed trades
+
+### Bot Score Analysis
+
+The `/botscore` command fetches the last 7 days of trades for a wallet and runs a pipeline of heuristic rules:
+
+| Points | Signal | Threshold |
+|---|---|---|
+| +30 | Trade frequency | > 200 trades/day |
+| +25 | Micro-trade ratio | > 70% of trades under $5 |
+| +20 | Maker fill ratio | > 70% maker fills |
+| +15 | 24h uniformity | > 0.80 (no sleep gaps) |
+| +10 | Market diversity | > 50 unique markets in 7d |
+
+Score interpretation:
+- **0–25**: HumanLikely
+- **26–60**: Hybrid (power user / semi-bot)
+- **61–100**: BotLikely (market maker / arb / copy bot)
+
+The pipeline is extensible — new rules can be added by implementing the `ScoringRule` trait.

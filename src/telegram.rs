@@ -1,4 +1,6 @@
+use crate::bot_score::{format_bot_score, BotScorePipeline};
 use crate::db;
+use crate::polymarket::PolymarketClient;
 use sqlx::PgPool;
 use std::sync::Arc;
 use teloxide::macros::BotCommands;
@@ -21,6 +23,8 @@ pub enum Command {
     Status,
     #[command(description = "Subscribe this chat to trade alerts (admin only)")]
     Subscribe,
+    #[command(description = "Analyze wallet bot score: /botscore <0xAddress>")]
+    Botscore(String),
 }
 
 #[derive(Clone)]
@@ -30,10 +34,25 @@ pub struct BotState {
     pub start_time: std::time::Instant,
     pub last_poll: Arc<RwLock<Option<std::time::Instant>>>,
     pub registered_chats: Arc<RwLock<std::collections::HashSet<i64>>>,
+    pub api_client: Arc<PolymarketClient>,
 }
 
 fn is_admin(user_id: UserId, admin_ids: &[u64]) -> bool {
     admin_ids.contains(&user_id.0)
+}
+
+fn parse_wallet_address(s: &str) -> Result<String, String> {
+    let s = s.trim();
+    if s.is_empty() {
+        return Err("Address is required.".to_string());
+    }
+    if !s.starts_with("0x") || s.len() != 42 {
+        return Err("Must start with 0x and be 42 characters.".to_string());
+    }
+    if !s[2..].chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err("Must contain only hex characters.".to_string());
+    }
+    Ok(s.to_string())
 }
 
 fn parse_add_args(args: &str) -> Result<(String, Option<String>), String> {
@@ -41,18 +60,9 @@ fn parse_add_args(args: &str) -> Result<(String, Option<String>), String> {
     if parts.is_empty() {
         return Err("Usage: /add <0xProxyWallet> [alias]".to_string());
     }
-
-    let address = parts[0];
-    if !address.starts_with("0x") || address.len() != 42 {
-        return Err("Invalid address. Must start with 0x and be 42 characters.".to_string());
-    }
-    // Basic hex validation
-    if !address[2..].chars().all(|c| c.is_ascii_hexdigit()) {
-        return Err("Invalid address. Must contain only hex characters.".to_string());
-    }
-
+    let address = parse_wallet_address(parts[0])?;
     let alias = parts.get(1).map(|s| s.to_string());
-    Ok((address.to_string(), alias))
+    Ok((address, alias))
 }
 
 fn parse_remove_args(args: &str) -> Result<String, String> {
@@ -60,10 +70,7 @@ fn parse_remove_args(args: &str) -> Result<String, String> {
     if address.is_empty() {
         return Err("Usage: /remove <0xProxyWallet>".to_string());
     }
-    if !address.starts_with("0x") || address.len() != 42 {
-        return Err("Invalid address. Must start with 0x and be 42 characters.".to_string());
-    }
-    Ok(address.to_string())
+    parse_wallet_address(address)
 }
 
 pub async fn handle_command(
@@ -177,6 +184,39 @@ pub async fn handle_command(
                     Err(e) => {
                         tracing::error!(chat_id, error = %e, "failed to persist chat subscription");
                         format!("❌ Database error: {}", e)
+                    }
+                }
+            }
+        }
+
+        Command::Botscore(args) => {
+            let user_id = msg.from.as_ref().map(|u| u.id).unwrap_or(UserId(0));
+            if !is_admin(user_id, &state.admin_user_ids) {
+                "⛔ You are not authorized to use this command.".to_string()
+            } else {
+                match parse_wallet_address(&args) {
+                    Err(e) => format!("❌ {}", e),
+                    Ok(address) => {
+                        let since = chrono::Utc::now().timestamp() - 7 * 86_400;
+                        let (all_result, taker_result) = tokio::join!(
+                            state.api_client.fetch_trades_since(&address, since),
+                            state.api_client.fetch_taker_trades_since(&address, since),
+                        );
+                        match (all_result, taker_result) {
+                            (Ok(all), Ok(taker)) => {
+                                if all.is_empty() {
+                                    format!(
+                                        "No trades found for {} in the last 7 days.",
+                                        &address[..10]
+                                    )
+                                } else {
+                                    let result =
+                                        BotScorePipeline::default().run(&all, &taker);
+                                    format_bot_score(&address, &result)
+                                }
+                            }
+                            _ => "❌ API error fetching trade data.".to_string(),
+                        }
                     }
                 }
             }
