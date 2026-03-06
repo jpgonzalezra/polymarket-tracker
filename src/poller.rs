@@ -136,17 +136,17 @@ impl Poller {
             "found new trades"
         );
 
-        // Fetch market info for unique condition_ids
-        let unique_cids: HashSet<&str> = new_trades.iter().map(|t| t.condition_id.as_str()).collect();
+        // Fetch market info for unique slugs
+        let unique_slugs: HashSet<&str> = new_trades.iter().map(|t| t.slug.as_str()).collect();
         let mut market_infos = HashMap::new();
-        for cid in &unique_cids {
-            match self.client.fetch_market_info(cid).await {
+        for slug in &unique_slugs {
+            match self.client.fetch_market_info(slug).await {
                 Ok(Some(info)) => {
-                    market_infos.insert(cid.to_string(), info);
+                    market_infos.insert(slug.to_string(), info);
                 }
                 Ok(None) => {}
                 Err(e) => {
-                    tracing::warn!(condition_id = %cid, error = %e, "failed to fetch market info");
+                    tracing::warn!(slug = %slug, error = %e, "failed to fetch market info");
                 }
             }
         }
@@ -161,7 +161,7 @@ impl Poller {
         let mut seen = self.seen_tx_hashes.write().await;
         for mut trade in new_trades {
             trade.alias = alias.clone();
-            trade.market_info = market_infos.get(&trade.condition_id).cloned();
+            trade.market_info = market_infos.get(&trade.slug).cloned();
             seen.insert(trade.transaction_hash.clone());
             if let Err(e) = self.notifier_tx.send(trade).await {
                 tracing::error!(error = %e, "failed to enqueue trade notification");

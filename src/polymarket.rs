@@ -127,12 +127,12 @@ impl PolymarketClient {
         Ok(new_trades)
     }
 
-    pub async fn fetch_market_info(&self, condition_id: &str) -> Result<Option<MarketInfo>, ApiError> {
+    pub async fn fetch_market_info(&self, slug: &str) -> Result<Option<MarketInfo>, ApiError> {
         let url = format!("{}/markets", self.gamma_base_url);
         let resp = self
             .client
             .get(&url)
-            .query(&[("condition_id", condition_id), ("limit", "1")])
+            .query(&[("slug", slug), ("limit", "1")])
             .send()
             .await?;
 
@@ -158,6 +158,7 @@ impl PolymarketClient {
 
         let end_date = market
             .get("endDateIso")
+            .or_else(|| market.get("endDate"))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 

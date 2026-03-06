@@ -168,13 +168,18 @@ fn format_trade_message(trade: &Trade) -> String {
     let market_context = trade.market_info.as_ref().map(|info| {
         let vol = format_usd_compact(info.volume24hr);
         let liq = format_usd_compact(info.liquidity);
-        let end = info
-            .end_date
-            .as_deref()
-            .and_then(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
-            .map(|d| d.format("%b %d").to_string())
-            .unwrap_or_else(|| "—".to_string());
-        format!("📉 Vol 24h: ${vol} | Liq: ${liq} | Ends: {end}")
+        let mut parts = vec![
+            format!("Vol 24h: ${vol}"),
+            format!("Liq: ${liq}"),
+        ];
+        if let Some(end) = info.end_date.as_deref().and_then(|d| {
+            chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d")
+                .ok()
+                .or_else(|| d.get(..10).and_then(|s| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok()))
+        }) {
+            parts.push(format!("Ends: {}", end.format("%b %d")));
+        }
+        format!("📉 {}", parts.join(" | "))
     });
 
     let mut msg = format!(
