@@ -162,7 +162,10 @@ impl ScoringRule for UniformityRule {
             points: if triggered { 15 } else { 0 },
             max_points: 15,
             triggered,
-            detail: format!("score: {:.2} (threshold: 0.80)", m.uniformity_24h),
+            detail: format!(
+                "score (uniformity 24h): {:.2} (threshold: 0.80)",
+                m.uniformity_24h
+            ),
         }
     }
 }
@@ -315,6 +318,7 @@ mod tests {
             event_slug: None,
             asset: None,
             alias: None,
+            market_info: None,
         }
     }
 
