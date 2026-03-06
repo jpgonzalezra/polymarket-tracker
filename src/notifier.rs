@@ -118,6 +118,16 @@ impl Notifier {
     }
 }
 
+fn format_usd_compact(value: f64) -> String {
+    if value >= 1_000_000.0 {
+        format!("{:.1}M", value / 1_000_000.0)
+    } else if value >= 1_000.0 {
+        format!("{:.1}K", value / 1_000.0)
+    } else {
+        format!("{:.0}", value)
+    }
+}
+
 fn format_trade_message(trade: &Trade) -> String {
     let addr = &trade.proxy_wallet;
     let addr_short = if addr.len() > 10 {
@@ -155,14 +165,24 @@ fn format_trade_message(trade: &Trade) -> String {
         .map(|dt| dt.format("%Y-%m-%d %H:%M:%S UTC").to_string())
         .unwrap_or_else(|| trade.timestamp.to_string());
 
-    format!(
+    let market_context = trade.market_info.as_ref().map(|info| {
+        let vol = format_usd_compact(info.volume24hr);
+        let liq = format_usd_compact(info.liquidity);
+        let end = info
+            .end_date
+            .as_deref()
+            .and_then(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
+            .map(|d| d.format("%b %d").to_string())
+            .unwrap_or_else(|| "—".to_string());
+        format!("📉 Vol 24h: ${vol} | Liq: ${liq} | Ends: {end}")
+    });
+
+    let mut msg = format!(
         "🔔 <b>Trade Alert</b>\n\
          {wallet_line}\n\
          📊 {side} {outcome}\n\
          {market_line}\n\
-         💰 Price: ${price:.4} | Size: {size:.2} tokens (~${usdc:.2})\n\
-         🕐 {ts}\n\
-         🔗 <a href=\"https://polygonscan.com/tx/{tx_hash}\">View Tx</a>",
+         💰 Price: ${price:.4} | Size: {size:.2} tokens (~${usdc:.2})",
         wallet_line = wallet_line,
         side = trade.side,
         outcome = trade.outcome,
@@ -170,7 +190,16 @@ fn format_trade_message(trade: &Trade) -> String {
         price = trade.price,
         size = trade.size,
         usdc = usdc_value,
+    );
+    if let Some(ctx) = market_context {
+        msg.push('\n');
+        msg.push_str(&ctx);
+    }
+    msg.push_str(&format!(
+        "\n🕐 {ts}\n🔗 <a href=\"https://polygonscan.com/tx/{tx_hash}\">View Tx</a>",
         ts = ts,
         tx_hash = trade.transaction_hash,
-    )
+    ));
+
+    msg
 }

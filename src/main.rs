@@ -63,7 +63,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 9. Create components
     let bot = Bot::new(&config.telegram_bot_token);
-    let api_client = Arc::new(PolymarketClient::new(&config.polymarket_api_base_url));
+    let api_client = Arc::new(PolymarketClient::new(
+        &config.polymarket_api_base_url,
+        &config.gamma_api_base_url,
+    ));
 
     let poller = Poller::new(
         pool.clone(),

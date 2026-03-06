@@ -41,6 +41,7 @@ mod tests {
             event_slug: None,
             asset: None,
             alias: Some("alias1".to_string()),
+            market_info: None,
         }
     }
 

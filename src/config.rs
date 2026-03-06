@@ -6,6 +6,7 @@ pub struct Config {
     pub admin_user_ids: Vec<u64>,
     pub database_url: String,
     pub polymarket_api_base_url: String,
+    pub gamma_api_base_url: String,
     pub poll_interval_secs: u64,
     pub max_concurrency: usize,
     pub http_port: u16,
@@ -32,6 +33,9 @@ impl Config {
         let polymarket_api_base_url = env::var("POLYMARKET_API_BASE_URL")
             .unwrap_or_else(|_| "https://data-api.polymarket.com".to_string());
 
+        let gamma_api_base_url = env::var("GAMMA_API_BASE_URL")
+            .unwrap_or_else(|_| "https://gamma-api.polymarket.com".to_string());
+
         let poll_interval_secs: u64 = env::var("POLL_INTERVAL_SECS")
             .unwrap_or_else(|_| "15".to_string())
             .parse()
@@ -52,6 +56,7 @@ impl Config {
             admin_user_ids,
             database_url,
             polymarket_api_base_url,
+            gamma_api_base_url,
             poll_interval_secs,
             max_concurrency,
             http_port,

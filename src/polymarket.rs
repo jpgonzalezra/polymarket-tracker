@@ -23,6 +23,15 @@ pub struct Trade {
     pub asset: Option<String>,
     #[serde(skip)]
     pub alias: Option<String>,
+    #[serde(skip)]
+    pub market_info: Option<MarketInfo>,
+}
+
+#[derive(Debug, Clone)]
+pub struct MarketInfo {
+    pub volume24hr: f64,
+    pub liquidity: f64,
+    pub end_date: Option<String>,
 }
 
 impl Trade {
@@ -34,6 +43,7 @@ impl Trade {
 pub struct PolymarketClient {
     client: reqwest::Client,
     base_url: String,
+    gamma_base_url: String,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -45,7 +55,7 @@ pub enum ApiError {
 }
 
 impl PolymarketClient {
-    pub fn new(base_url: &str) -> Self {
+    pub fn new(base_url: &str, gamma_base_url: &str) -> Self {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(10))
             .user_agent("polymarket-tracker/0.1")
@@ -55,6 +65,7 @@ impl PolymarketClient {
         Self {
             client,
             base_url: base_url.trim_end_matches('/').to_string(),
+            gamma_base_url: gamma_base_url.trim_end_matches('/').to_string(),
         }
     }
 
@@ -114,6 +125,47 @@ impl PolymarketClient {
         }
 
         Ok(new_trades)
+    }
+
+    pub async fn fetch_market_info(&self, condition_id: &str) -> Result<Option<MarketInfo>, ApiError> {
+        let url = format!("{}/markets", self.gamma_base_url);
+        let resp = self
+            .client
+            .get(&url)
+            .query(&[("condition_id", condition_id), ("limit", "1")])
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            return Ok(None);
+        }
+
+        let markets: Vec<serde_json::Value> = resp.json().await?;
+        let market = match markets.first() {
+            Some(m) => m,
+            None => return Ok(None),
+        };
+
+        let volume24hr = market
+            .get("volume24hr")
+            .and_then(|v| v.as_f64().or_else(|| v.as_str()?.parse().ok()))
+            .unwrap_or(0.0);
+
+        let liquidity = market
+            .get("liquidity")
+            .and_then(|v| v.as_f64().or_else(|| v.as_str()?.parse().ok()))
+            .unwrap_or(0.0);
+
+        let end_date = market
+            .get("endDateIso")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        Ok(Some(MarketInfo {
+            volume24hr,
+            liquidity,
+            end_date,
+        }))
     }
 
     async fn fetch_trades_page(
