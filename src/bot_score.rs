@@ -3,6 +3,7 @@ use std::collections::HashSet;
 
 pub struct WalletMetrics {
     pub total_trades: usize,
+    #[allow(dead_code)]
     pub taker_trades: usize,
     pub trades_per_day: f64,
     pub micro_trade_ratio: f64,
@@ -86,6 +87,7 @@ impl WalletMetrics {
 }
 
 pub struct RuleResult {
+    #[allow(dead_code)]
     pub name: &'static str,
     pub points: u32,
     pub max_points: u32,
@@ -264,22 +266,15 @@ pub fn format_bot_score(address: &str, result: &BotScoreResult) -> String {
 
     let mut lines = vec![
         "<b>Bot Score Analysis</b>".to_string(),
-        format!(
-            "Wallet: <a href=\"https://polymarketanalytics.com/traders/{addr}\">{short}</a>",
-            addr = address,
-            short = short,
-        ),
+        format!("Wallet: <code>{}</code>", short),
         String::new(),
         format!("<b>Score: {}/100 — {}</b>", result.score, label),
         String::new(),
         "<b>Signals:</b>".to_string(),
     ];
 
-    let mut pending = vec![];
     for r in &result.rule_results {
-        if r.max_points == 0 {
-            pending.push(format!("  - {}", r.name));
-        } else {
+        if r.max_points > 0 {
             let icon = if r.triggered { "[+]" } else { "[ ]" };
             let pts = if r.triggered { r.points } else { 0 };
             lines.push(format!("  {} +{}  {}", icon, pts, r.detail));
@@ -291,12 +286,6 @@ pub fn format_bot_score(address: &str, result: &BotScoreResult) -> String {
         "Analysis: {} trades | {:.1} days",
         result.metrics.total_trades, result.metrics.window_days,
     ));
-
-    if !pending.is_empty() {
-        lines.push(String::new());
-        lines.push("<i>Rules not yet available:</i>".to_string());
-        lines.extend(pending);
-    }
 
     lines.join("\n")
 }
