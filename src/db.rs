@@ -84,6 +84,14 @@ pub async fn remove_wallet(pool: &PgPool, proxy_wallet: &str) -> Result<bool, sq
     Ok(result.rows_affected() > 0)
 }
 
+pub async fn wallet_exists(pool: &PgPool, proxy_wallet: &str) -> Result<bool, sqlx::Error> {
+    let row = sqlx::query("SELECT 1 FROM watched_wallets WHERE proxy_wallet = $1")
+        .bind(proxy_wallet.to_lowercase())
+        .fetch_optional(pool)
+        .await?;
+    Ok(row.is_some())
+}
+
 pub async fn load_registered_chats(pool: &PgPool) -> Result<Vec<i64>, sqlx::Error> {
     let rows = sqlx::query("SELECT chat_id FROM registered_chats")
         .fetch_all(pool)

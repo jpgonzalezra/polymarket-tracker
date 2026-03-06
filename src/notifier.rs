@@ -1,4 +1,6 @@
+use crate::db;
 use crate::polymarket::Trade;
+use sqlx::PgPool;
 use std::collections::HashSet;
 use std::sync::Arc;
 use teloxide::prelude::*;
@@ -7,6 +9,7 @@ use tokio::sync::{mpsc, RwLock};
 
 pub struct Notifier {
     bot: Bot,
+    pool: PgPool,
     registered_chats: Arc<RwLock<HashSet<i64>>>,
     rx: mpsc::Receiver<Trade>,
 }
@@ -14,11 +17,13 @@ pub struct Notifier {
 impl Notifier {
     pub fn new(
         bot: Bot,
+        pool: PgPool,
         registered_chats: Arc<RwLock<HashSet<i64>>>,
         rx: mpsc::Receiver<Trade>,
     ) -> Self {
         Self {
             bot,
+            pool,
             registered_chats,
             rx,
         }
@@ -61,6 +66,18 @@ impl Notifier {
     }
 
     async fn send_trade_alert(&self, trade: &Trade) -> Result<(), teloxide::RequestError> {
+        let still_watched = db::wallet_exists(&self.pool, &trade.proxy_wallet)
+            .await
+            .unwrap_or(true);
+        if !still_watched {
+            tracing::info!(
+                proxy_wallet = %trade.proxy_wallet,
+                tx_hash = %trade.transaction_hash,
+                "wallet removed, skipping queued alert"
+            );
+            return Ok(());
+        }
+
         let message = format_trade_message(trade);
         let chats: Vec<i64> = self.registered_chats.read().await.iter().copied().collect();
 

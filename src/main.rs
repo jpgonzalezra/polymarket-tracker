@@ -76,7 +76,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         last_poll.clone(),
     );
 
-    let notifier = Notifier::new(bot.clone(), registered_chats.clone(), notifier_rx);
+    let notifier = Notifier::new(bot.clone(), pool.clone(), registered_chats.clone(), notifier_rx);
 
     let health_state = health::HealthState {
         pool: pool.clone(),
