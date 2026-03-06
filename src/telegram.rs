@@ -5,6 +5,7 @@ use sqlx::PgPool;
 use std::sync::Arc;
 use teloxide::macros::BotCommands;
 use teloxide::prelude::*;
+use teloxide::types::ParseMode;
 use teloxide::utils::command::BotCommands as BotCommandsTrait;
 use tokio::sync::RwLock;
 
@@ -13,9 +14,9 @@ use tokio::sync::RwLock;
 pub enum Command {
     #[command(description = "Show this help message")]
     Help,
-    #[command(description = "Add wallet: /add <0xAddress> [alias]")]
+    #[command(description = "Add wallet: /add &lt;0xAddress&gt; [alias]")]
     Add(String),
-    #[command(description = "Remove wallet: /remove <0xAddress>")]
+    #[command(description = "Remove wallet: /remove &lt;0xAddress&gt;")]
     Remove(String),
     #[command(description = "List watched wallets")]
     List,
@@ -23,7 +24,7 @@ pub enum Command {
     Status,
     #[command(description = "Subscribe this chat to trade alerts (admin only)")]
     Subscribe,
-    #[command(description = "Analyze wallet bot score: /botscore <0xAddress>")]
+    #[command(description = "Analyze wallet bot score: /botscore &lt;0xAddress&gt;")]
     Botscore(String),
 }
 
@@ -191,12 +192,17 @@ pub async fn handle_command(
 
         Command::Botscore(args) => {
             let user_id = msg.from.as_ref().map(|u| u.id).unwrap_or(UserId(0));
+            tracing::info!(user_id = user_id.0, wallet = %args, "botscore command received");
             if !is_admin(user_id, &state.admin_user_ids) {
                 "⛔ You are not authorized to use this command.".to_string()
             } else {
                 match parse_wallet_address(&args) {
-                    Err(e) => format!("❌ {}", e),
+                    Err(e) => {
+                        tracing::warn!(error = %e, "invalid wallet address");
+                        format!("❌ {}", e)
+                    }
                     Ok(address) => {
+                        tracing::info!(wallet = %address, "fetching bot score");
                         let since = chrono::Utc::now().timestamp() - 7 * 86_400;
                         let (all_result, taker_result) = tokio::join!(
                             state.api_client.fetch_trades_since(&address, since),
@@ -205,17 +211,22 @@ pub async fn handle_command(
                         match (all_result, taker_result) {
                             (Ok(all), Ok(taker)) => {
                                 if all.is_empty() {
+                                    tracing::info!(wallet = %address, "no trades found");
                                     format!(
                                         "No trades found for {} in the last 7 days.",
                                         &address[..10]
                                     )
                                 } else {
+                                    tracing::info!(wallet = %address, trades = all.len(), "computing bot score");
                                     let result =
                                         BotScorePipeline::default().run(&all, &taker);
                                     format_bot_score(&address, &result)
                                 }
                             }
-                            _ => "❌ API error fetching trade data.".to_string(),
+                            (all_err, taker_err) => {
+                                tracing::error!(wallet = %address, all_error = ?all_err, taker_error = ?taker_err, "API error fetching trades");
+                                "❌ API error fetching trade data.".to_string()
+                            }
                         }
                     }
                 }
@@ -223,7 +234,10 @@ pub async fn handle_command(
         }
     };
 
-    bot.send_message(msg.chat.id, response).send().await?;
+    bot.send_message(msg.chat.id, response)
+        .parse_mode(ParseMode::Html)
+        .send()
+        .await?;
     Ok(())
 }
 
