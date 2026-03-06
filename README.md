@@ -5,6 +5,7 @@ Real-time Telegram alerts for Polymarket wallet activity. Monitors proxy wallets
 ## Features
 
 - Poll Polymarket Data API for trades by watched proxy wallets
+- Trade alerts enriched with market context (24h volume, liquidity, end date) via Gamma API
 - Telegram bot commands to manage watchlist (`/add`, `/remove`, `/list`, `/status`)
 - Admin access control for wallet management
 - In-memory dedup — only alerts trades that occur while the app is running
@@ -27,6 +28,7 @@ Real-time Telegram alerts for Polymarket wallet activity. Monitors proxy wallets
 | `ADMIN_USER_IDS` | Yes | - | Comma-separated Telegram user IDs for admin access |
 | `DATABASE_URL` | Yes | - | PostgreSQL connection string |
 | `POLYMARKET_API_BASE_URL` | No | `https://data-api.polymarket.com` | Polymarket Data API base URL |
+| `GAMMA_API_BASE_URL` | No | `https://gamma-api.polymarket.com` | Gamma API base URL (market metadata) |
 | `POLL_INTERVAL_SECS` | No | `15` | Polling interval in seconds |
 | `MAX_CONCURRENCY` | No | `5` | Max concurrent wallet polls |
 | `HTTP_PORT` | No | `8080` | Health server port |
