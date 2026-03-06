@@ -2,7 +2,7 @@ use crate::polymarket::Trade;
 use std::collections::HashSet;
 use std::sync::Arc;
 use teloxide::prelude::*;
-use teloxide::types::ParseMode;
+use teloxide::types::{LinkPreviewOptions, ParseMode};
 use tokio::sync::{mpsc, RwLock};
 
 pub struct Notifier {
@@ -77,6 +77,13 @@ impl Notifier {
                 .bot
                 .send_message(ChatId(chat_id), &message)
                 .parse_mode(ParseMode::Html)
+                .link_preview_options(LinkPreviewOptions {
+                    is_disabled: true,
+                    url: None,
+                    prefer_small_media: false,
+                    prefer_large_media: false,
+                    show_above_text: false,
+                })
                 .send()
                 .await
             {
