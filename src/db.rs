@@ -68,6 +68,14 @@ pub async fn update_last_synced_timestamp(
     Ok(())
 }
 
+pub async fn get_wallet_alias(pool: &PgPool, proxy_wallet: &str) -> Result<Option<String>, sqlx::Error> {
+    let row = sqlx::query("SELECT alias FROM watched_wallets WHERE proxy_wallet = $1")
+        .bind(proxy_wallet.to_lowercase())
+        .fetch_optional(pool)
+        .await?;
+    Ok(row.and_then(|r| r.get("alias")))
+}
+
 pub async fn remove_wallet(pool: &PgPool, proxy_wallet: &str) -> Result<bool, sqlx::Error> {
     let result = sqlx::query("DELETE FROM watched_wallets WHERE proxy_wallet = $1")
         .bind(proxy_wallet.to_lowercase())

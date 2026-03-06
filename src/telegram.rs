@@ -204,6 +204,7 @@ pub async fn handle_command(
                     Ok(address) => {
                         tracing::info!(wallet = %address, "fetching bot score");
                         let since = chrono::Utc::now().timestamp() - 7 * 86_400;
+                        let alias = db::get_wallet_alias(&state.pool, &address).await.ok().flatten();
                         let (all_result, taker_result) = tokio::join!(
                             state.api_client.fetch_trades_since(&address, since),
                             state.api_client.fetch_taker_trades_since(&address, since),
@@ -220,7 +221,7 @@ pub async fn handle_command(
                                     tracing::info!(wallet = %address, trades = all.len(), "computing bot score");
                                     let result =
                                         BotScorePipeline::default().run(&all, &taker);
-                                    format_bot_score(&address, &result)
+                                    format_bot_score(&address, alias.as_deref(), &result)
                                 }
                             }
                             (all_err, taker_err) => {

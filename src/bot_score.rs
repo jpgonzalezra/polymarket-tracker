@@ -256,7 +256,7 @@ impl BotScorePipeline {
     }
 }
 
-pub fn format_bot_score(address: &str, result: &BotScoreResult) -> String {
+pub fn format_bot_score(address: &str, alias: Option<&str>, result: &BotScoreResult) -> String {
     let label = match result.label {
         BotLabel::HumanLikely => "HumanLikely",
         BotLabel::Hybrid => "Hybrid",
@@ -264,9 +264,14 @@ pub fn format_bot_score(address: &str, result: &BotScoreResult) -> String {
     };
     let short = format!("{}...{}", &address[..6], &address[address.len() - 4..]);
 
+    let wallet_line = match alias {
+        Some(a) => format!("Wallet: <code>{}</code> ({})", short, a),
+        None => format!("Wallet: <code>{}</code>", short),
+    };
+
     let mut lines = vec![
         "<b>Bot Score Analysis</b>".to_string(),
-        format!("Wallet: <code>{}</code>", short),
+        wallet_line,
         String::new(),
         format!("<b>Score: {}/100 — {}</b>", result.score, label),
         String::new(),
@@ -469,7 +474,7 @@ mod tests {
         let pipeline = BotScorePipeline::default();
         let trades = vec![make_trade(1000, 10.0, 0.5, "cond_a")];
         let result = pipeline.run(&trades, &trades);
-        let output = format_bot_score("0x1234567890abcdef1234567890abcdef12345678", &result);
+        let output = format_bot_score("0x1234567890abcdef1234567890abcdef12345678", None, &result);
         assert!(output.contains("Bot Score Analysis"));
         assert!(output.contains("0x1234...5678"));
         assert!(output.contains("Score:"));
