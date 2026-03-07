@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS trade_filters (
+    key TEXT PRIMARY KEY,
+    value DOUBLE PRECISION NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT now()
+);

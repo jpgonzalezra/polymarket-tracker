@@ -11,6 +11,7 @@ Real-time Telegram alerts for Polymarket wallet activity. Monitors proxy wallets
 - In-memory dedup — only alerts trades that occur while the app is running
 - Health/readiness HTTP endpoints (`/healthz`, `/readyz`)
 - Bot score analysis (`/botscore`) — heuristic scoring pipeline to detect automated wallets
+- Trade filters (`/setfilter`) — configurable min USDC amount and min market liquidity thresholds
 - Structured JSON logging via `tracing`
 - Graceful shutdown (SIGINT/SIGTERM)
 
@@ -66,6 +67,9 @@ Real-time Telegram alerts for Polymarket wallet activity. Monitors proxy wallets
 | `/status` | No | Show uptime, wallet count, last poll time |
 | `/subscribe` | Yes | Subscribe this chat to receive trade alerts |
 | `/botscore <0xAddress>` | Yes | Analyze if a wallet is likely a bot (score 0–100) |
+| `/setfilter amount\|liquidity <N>` | Yes | Set trade filter (e.g. min USDC amount or market liquidity) |
+| `/removefilter amount\|liquidity` | Yes | Remove an active trade filter |
+| `/filters` | No | Show active trade filters |
 
 ## Running Tests
 
@@ -105,3 +109,14 @@ Score interpretation:
 - **61–100**: BotLikely (market maker / arb / copy bot)
 
 The pipeline is extensible — new rules can be added by implementing the `ScoringRule` trait.
+
+### Trade Filters
+
+Configurable filters to reduce noise from low-value trades or illiquid markets. Filters are persisted in the database and apply globally to all alerts.
+
+| Filter | Command | Example | Effect |
+|---|---|---|---|
+| Min trade amount | `/setfilter amount <N>` | `/setfilter amount 50` | Ignore trades below $50 USDC |
+| Min market liquidity | `/setfilter liquidity <N>` | `/setfilter liquidity 10000` | Ignore markets with < $10K liquidity |
+
+Use `/filters` to view active filters and `/removefilter amount` or `/removefilter liquidity` to disable them.

@@ -55,6 +55,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!(count = initial_chats.len(), "loaded registered chats from db");
     let registered_chats: Arc<RwLock<HashSet<i64>>> = Arc::new(RwLock::new(initial_chats));
 
+    let initial_filters = db::load_trade_filters(&pool).await?;
+    tracing::info!(
+        min_amount = ?initial_filters.min_amount,
+        min_liquidity = ?initial_filters.min_liquidity,
+        "loaded trade filters from db"
+    );
+    let trade_filters: Arc<RwLock<db::TradeFilters>> = Arc::new(RwLock::new(initial_filters));
+
     // 7. Notifier channel
     let (notifier_tx, notifier_rx) = tokio::sync::mpsc::channel(256);
 
@@ -79,7 +87,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         last_poll.clone(),
     );
 
-    let notifier = Notifier::new(bot.clone(), pool.clone(), registered_chats.clone(), notifier_rx);
+    let notifier = Notifier::new(bot.clone(), pool.clone(), registered_chats.clone(), trade_filters.clone(), notifier_rx);
 
     let health_state = health::HealthState {
         pool: pool.clone(),
@@ -94,6 +102,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         last_poll: last_poll.clone(),
         registered_chats: registered_chats.clone(),
         api_client: Arc::clone(&api_client),
+        trade_filters: trade_filters.clone(),
     };
 
     // 10. Spawn tasks

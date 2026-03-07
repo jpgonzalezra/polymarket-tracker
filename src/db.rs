@@ -108,3 +108,52 @@ pub async fn insert_registered_chat(pool: &PgPool, chat_id: i64) -> Result<(), s
     .await?;
     Ok(())
 }
+
+#[derive(Debug, Clone)]
+pub struct TradeFilters {
+    pub min_amount: Option<f64>,
+    pub min_liquidity: Option<f64>,
+}
+
+pub async fn load_trade_filters(pool: &PgPool) -> Result<TradeFilters, sqlx::Error> {
+    let rows = sqlx::query("SELECT key, value FROM trade_filters")
+        .fetch_all(pool)
+        .await?;
+
+    let mut filters = TradeFilters {
+        min_amount: None,
+        min_liquidity: None,
+    };
+
+    for row in rows {
+        let key: String = row.get("key");
+        let value: f64 = row.get("value");
+        match key.as_str() {
+            "min_amount" => filters.min_amount = Some(value),
+            "min_liquidity" => filters.min_liquidity = Some(value),
+            _ => {}
+        }
+    }
+
+    Ok(filters)
+}
+
+pub async fn set_trade_filter(pool: &PgPool, key: &str, value: f64) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO trade_filters (key, value, updated_at) VALUES ($1, $2, now()) \
+         ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = now()",
+    )
+    .bind(key)
+    .bind(value)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn remove_trade_filter(pool: &PgPool, key: &str) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query("DELETE FROM trade_filters WHERE key = $1")
+        .bind(key)
+        .execute(pool)
+        .await?;
+    Ok(result.rows_affected() > 0)
+}

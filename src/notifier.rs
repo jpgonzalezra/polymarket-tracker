@@ -1,4 +1,5 @@
 use crate::db;
+use crate::db::TradeFilters;
 use crate::polymarket::Trade;
 use sqlx::PgPool;
 use std::collections::HashSet;
@@ -11,6 +12,7 @@ pub struct Notifier {
     bot: Bot,
     pool: PgPool,
     registered_chats: Arc<RwLock<HashSet<i64>>>,
+    trade_filters: Arc<RwLock<TradeFilters>>,
     rx: mpsc::Receiver<Trade>,
 }
 
@@ -19,12 +21,14 @@ impl Notifier {
         bot: Bot,
         pool: PgPool,
         registered_chats: Arc<RwLock<HashSet<i64>>>,
+        trade_filters: Arc<RwLock<TradeFilters>>,
         rx: mpsc::Receiver<Trade>,
     ) -> Self {
         Self {
             bot,
             pool,
             registered_chats,
+            trade_filters,
             rx,
         }
     }
@@ -77,6 +81,37 @@ impl Notifier {
             );
             return Ok(());
         }
+
+        // Apply trade filters
+        let filters = self.trade_filters.read().await;
+        if let Some(min_amount) = filters.min_amount {
+            if trade.usdc_value() < min_amount {
+                tracing::debug!(
+                    tx_hash = %trade.transaction_hash,
+                    usdc_value = trade.usdc_value(),
+                    min_amount,
+                    "trade below min amount filter, skipping"
+                );
+                return Ok(());
+            }
+        }
+        if let Some(min_liquidity) = filters.min_liquidity {
+            let liquidity = trade
+                .market_info
+                .as_ref()
+                .map(|m| m.liquidity)
+                .unwrap_or(0.0);
+            if liquidity < min_liquidity {
+                tracing::debug!(
+                    tx_hash = %trade.transaction_hash,
+                    liquidity,
+                    min_liquidity,
+                    "market below min liquidity filter, skipping"
+                );
+                return Ok(());
+            }
+        }
+        drop(filters);
 
         let message = format_trade_message(trade);
         let chats: Vec<i64> = self.registered_chats.read().await.iter().copied().collect();

@@ -1,5 +1,6 @@
 use crate::bot_score::{format_bot_score, BotScorePipeline};
 use crate::db;
+use crate::db::TradeFilters;
 use crate::polymarket::PolymarketClient;
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -26,6 +27,12 @@ pub enum Command {
     Subscribe,
     #[command(description = "Analyze wallet bot score: /botscore &lt;0xAddress&gt;")]
     Botscore(String),
+    #[command(description = "Set filter: /setfilter amount|liquidity [value]")]
+    SetFilter(String),
+    #[command(description = "Remove filter: /removefilter amount|liquidity")]
+    RemoveFilter(String),
+    #[command(description = "Show active trade filters")]
+    Filters,
 }
 
 #[derive(Clone)]
@@ -36,6 +43,7 @@ pub struct BotState {
     pub last_poll: Arc<RwLock<Option<std::time::Instant>>>,
     pub registered_chats: Arc<RwLock<std::collections::HashSet<i64>>>,
     pub api_client: Arc<PolymarketClient>,
+    pub trade_filters: Arc<RwLock<TradeFilters>>,
 }
 
 fn is_admin(user_id: UserId, admin_ids: &[u64]) -> bool {
@@ -72,6 +80,41 @@ fn parse_remove_args(args: &str) -> Result<String, String> {
         return Err("Usage: /remove <0xProxyWallet>".to_string());
     }
     parse_wallet_address(address)
+}
+
+fn parse_filter_key(input: &str) -> Result<&'static str, String> {
+    match input.trim().to_lowercase().as_str() {
+        "amount" | "min_amount" => Ok("min_amount"),
+        "liquidity" | "min_liquidity" => Ok("min_liquidity"),
+        "" => Err("Usage: /removefilter amount|liquidity".to_string()),
+        other => Err(format!(
+            "Unknown filter '{}'. Valid filters: amount, liquidity",
+            other
+        )),
+    }
+}
+
+fn parse_set_filter_args(args: &str) -> Result<(&'static str, f64), String> {
+    let parts: Vec<&str> = args.split_whitespace().collect();
+    if parts.len() != 2 {
+        return Err("Usage: /setfilter amount|liquidity [value]".to_string());
+    }
+    let key = parse_filter_key(parts[0])?;
+    let value: f64 = parts[1]
+        .parse()
+        .map_err(|_| "Value must be a number.".to_string())?;
+    if value < 0.0 {
+        return Err("Value must be non-negative.".to_string());
+    }
+    Ok((key, value))
+}
+
+fn filter_key_label(key: &str) -> &str {
+    match key {
+        "min_amount" => "Min trade amount",
+        "min_liquidity" => "Min market liquidity",
+        _ => key,
+    }
 }
 
 pub async fn handle_command(
@@ -233,6 +276,76 @@ pub async fn handle_command(
                 }
             }
         }
+
+        Command::SetFilter(args) => {
+            let user_id = msg.from.as_ref().map(|u| u.id).unwrap_or(UserId(0));
+            if !is_admin(user_id, &state.admin_user_ids) {
+                "⛔ You are not authorized to set filters.".to_string()
+            } else {
+                match parse_set_filter_args(&args) {
+                    Ok((key, value)) => {
+                        match db::set_trade_filter(&state.pool, key, value).await {
+                            Ok(()) => {
+                                let mut filters = state.trade_filters.write().await;
+                                match key {
+                                    "min_amount" => filters.min_amount = Some(value),
+                                    "min_liquidity" => filters.min_liquidity = Some(value),
+                                    _ => {}
+                                }
+                                let label = filter_key_label(key);
+                                format!("✅ Filter set: {} >= ${:.2}", label, value)
+                            }
+                            Err(e) => format!("❌ Database error: {}", e),
+                        }
+                    }
+                    Err(e) => format!("❌ {}", e),
+                }
+            }
+        }
+
+        Command::RemoveFilter(args) => {
+            let user_id = msg.from.as_ref().map(|u| u.id).unwrap_or(UserId(0));
+            if !is_admin(user_id, &state.admin_user_ids) {
+                "⛔ You are not authorized to remove filters.".to_string()
+            } else {
+                match parse_filter_key(&args) {
+                    Ok(key) => match db::remove_trade_filter(&state.pool, key).await {
+                        Ok(true) => {
+                            let mut filters = state.trade_filters.write().await;
+                            match key {
+                                "min_amount" => filters.min_amount = None,
+                                "min_liquidity" => filters.min_liquidity = None,
+                                _ => {}
+                            }
+                            let label = filter_key_label(key);
+                            format!("✅ Filter removed: {}", label)
+                        }
+                        Ok(false) => "⚠️ No such filter is active.".to_string(),
+                        Err(e) => format!("❌ Database error: {}", e),
+                    },
+                    Err(e) => format!("❌ {}", e),
+                }
+            }
+        }
+
+        Command::Filters => {
+            let filters = state.trade_filters.read().await;
+            let mut lines = vec!["🔍 Active filters:".to_string()];
+            let mut has_filter = false;
+            if let Some(v) = filters.min_amount {
+                lines.push(format!("  • Min trade amount: ${:.2} USDC", v));
+                has_filter = true;
+            }
+            if let Some(v) = filters.min_liquidity {
+                lines.push(format!("  • Min market liquidity: ${:.2}", v));
+                has_filter = true;
+            }
+            if !has_filter {
+                "🔍 No active filters. Use /setfilter to add one.".to_string()
+            } else {
+                lines.join("\n")
+            }
+        }
     };
 
     bot.send_message(msg.chat.id, response)
@@ -294,6 +407,46 @@ mod tests {
     fn test_parse_remove_invalid() {
         let result = parse_remove_args("not-an-address");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_set_filter_amount() {
+        let (key, value) = parse_set_filter_args("amount 50").unwrap();
+        assert_eq!(key, "min_amount");
+        assert!((value - 50.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_parse_set_filter_liquidity() {
+        let (key, value) = parse_set_filter_args("liquidity 1000.5").unwrap();
+        assert_eq!(key, "min_liquidity");
+        assert!((value - 1000.5).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_parse_set_filter_missing_value() {
+        let result = parse_set_filter_args("amount");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_set_filter_invalid_key() {
+        let result = parse_set_filter_args("unknown 50");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_set_filter_negative() {
+        let result = parse_set_filter_args("amount -10");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_filter_key_aliases() {
+        assert_eq!(parse_filter_key("amount").unwrap(), "min_amount");
+        assert_eq!(parse_filter_key("min_amount").unwrap(), "min_amount");
+        assert_eq!(parse_filter_key("liquidity").unwrap(), "min_liquidity");
+        assert_eq!(parse_filter_key("min_liquidity").unwrap(), "min_liquidity");
     }
 
     #[test]
